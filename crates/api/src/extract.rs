@@ -24,6 +24,9 @@ impl<T: serde::Serialize> IntoResponse for ApiJson<T> {
 
 impl From<JsonRejection> for AppError {
     fn from(rejection: JsonRejection) -> Self {
+        if rejection.status() == axum::http::StatusCode::PAYLOAD_TOO_LARGE {
+            return AppError::PayloadTooLarge("request body is too large".into());
+        }
         match rejection {
             // Valid JSON, wrong shape (missing field, wrong type): semantically invalid.
             JsonRejection::JsonDataError(e) => AppError::Validation(e.body_text()),

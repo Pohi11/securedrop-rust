@@ -22,6 +22,8 @@ pub struct TestApp {
 pub fn test_config() -> Config {
     let mut config = Config::from_env().expect("load config from env/.env");
     config.redis.key_prefix = format!("test:{}:", Uuid::new_v4());
+    // Most tests make many auth calls from 127.0.0.1; rate-limit tests opt back in.
+    config.rate_limit.enabled = false;
     config.http.bind_addr = "127.0.0.1:0".parse().unwrap();
     config
 }
