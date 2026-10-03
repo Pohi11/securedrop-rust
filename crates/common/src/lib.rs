@@ -79,3 +79,87 @@ pub struct UserResponse {
     pub storage_used_bytes: u64,
     pub created_at: DateTime<Utc>,
 }
+
+// ---------------------------------------------------------------------------------------------
+// Files & transfers
+// ---------------------------------------------------------------------------------------------
+
+/// A request the client must perform itself, directly against S3: method + URL + the exact
+/// headers that were signed. Changing any signed header invalidates the signature.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct PresignedRequest {
+    pub method: String,
+    pub url: String,
+    pub headers: std::collections::BTreeMap<String, String>,
+    pub expires_at: DateTime<Utc>,
+}
+
+// Presigned URLs are bearer credentials: keep them out of Debug output and logs.
+impl std::fmt::Debug for PresignedRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PresignedRequest")
+            .field("method", &self.method)
+            .field("url", &"[REDACTED]")
+            .field("expires_at", &self.expires_at)
+            .finish()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateUploadRequest {
+    pub filename: String,
+    pub content_type: String,
+    pub size_bytes: u64,
+    /// Hex-encoded SHA-256 of the entire file, computed by the client before uploading.
+    pub sha256: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateUploadResponse {
+    pub file_id: Uuid,
+    pub upload: UploadInstructions,
+    pub upload_expires_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum UploadInstructions {
+    /// PUT the whole file with this presigned request.
+    Single { request: PresignedRequest },
+    /// Split the file into `part_count` parts of `part_size` bytes (last part may be smaller),
+    /// then request presigned URLs for the parts.
+    Multipart { part_size: u64, part_count: u32 },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FileStatus {
+    Pending,
+    Available,
+    Failed,
+    Deleted,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileResponse {
+    pub id: Uuid,
+    pub owner_id: Uuid,
+    pub filename: String,
+    pub content_type: String,
+    pub size_bytes: u64,
+    /// Hex-encoded SHA-256 of the file.
+    pub sha256: String,
+    pub status: FileStatus,
+    pub created_at: DateTime<Utc>,
+    pub completed_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DownloadResponse {
+    pub file_id: Uuid,
+    pub filename: String,
+    pub size_bytes: u64,
+    /// Verify the downloaded bytes against this.
+    pub sha256: String,
+    pub request: PresignedRequest,
+}

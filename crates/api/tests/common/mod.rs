@@ -131,3 +131,93 @@ pub async fn error_code(resp: reqwest::Response) -> String {
         .unwrap_or_default()
         .to_string()
 }
+
+pub fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::Digest;
+    hex::encode(sha2::Sha256::digest(bytes))
+}
+
+/// Execute a presigned request exactly as a client would: same method, URL and signed headers.
+pub async fn execute_presigned(
+    client: &reqwest::Client,
+    req: &securedrop_common::PresignedRequest,
+    body: Option<Vec<u8>>,
+) -> reqwest::Response {
+    let method = reqwest::Method::from_bytes(req.method.as_bytes()).unwrap();
+    let mut builder = client.request(method, &req.url);
+    for (name, value) in &req.headers {
+        builder = builder.header(name, value);
+    }
+    if let Some(body) = body {
+        builder = builder.body(body);
+    }
+    builder.send().await.unwrap()
+}
+
+impl TestApp {
+    pub async fn create_upload(
+        &self,
+        token: &str,
+        filename: &str,
+        content_type: &str,
+        data: &[u8],
+    ) -> reqwest::Response {
+        self.post_authed(
+            "/api/v1/uploads",
+            token,
+            serde_json::json!({
+                "filename": filename,
+                "content_type": content_type,
+                "size_bytes": data.len(),
+                "sha256": sha256_hex(data),
+            }),
+        )
+        .await
+    }
+
+    pub async fn complete_upload(&self, token: &str, file_id: uuid::Uuid) -> reqwest::Response {
+        self.post_authed(
+            &format!("/api/v1/uploads/{file_id}/complete"),
+            token,
+            serde_json::json!({}),
+        )
+        .await
+    }
+
+    /// Full happy-path single-part upload. Returns the file id.
+    pub async fn upload_file(
+        &self,
+        token: &str,
+        filename: &str,
+        content_type: &str,
+        data: &[u8],
+    ) -> uuid::Uuid {
+        let resp = self
+            .create_upload(token, filename, content_type, data)
+            .await;
+        assert_eq!(
+            resp.status(),
+            201,
+            "create upload: {}",
+            resp.text().await.unwrap()
+        );
+        let created: securedrop_common::CreateUploadResponse = resp.json().await.unwrap();
+        let securedrop_common::UploadInstructions::Single { request } = created.upload else {
+            panic!("expected single-part upload");
+        };
+        let put = execute_presigned(&self.client, &request, Some(data.to_vec())).await;
+        assert!(
+            put.status().is_success(),
+            "S3 PUT failed: {}",
+            put.text().await.unwrap()
+        );
+        let done = self.complete_upload(token, created.file_id).await;
+        assert_eq!(
+            done.status(),
+            200,
+            "complete: {}",
+            done.text().await.unwrap()
+        );
+        created.file_id
+    }
+}

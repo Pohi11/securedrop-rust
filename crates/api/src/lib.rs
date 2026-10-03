@@ -9,9 +9,11 @@ pub mod config;
 pub mod database;
 pub mod error;
 pub mod extract;
+pub mod files;
 pub mod middleware;
 pub mod routes;
 pub mod state;
+pub mod storage;
 pub mod telemetry;
 pub mod users;
 

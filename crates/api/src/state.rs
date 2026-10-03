@@ -12,7 +12,8 @@ use sqlx::PgPool;
 
 use crate::{
     auth::{jwt::JwtKeys, password::PasswordHasher, revocation::SessionRevocations},
-    config::Config,
+    config::{Config, Environment},
+    storage::{ObjectStore, S3Store},
 };
 
 #[derive(Clone)]
@@ -24,6 +25,8 @@ pub struct AppState {
     pub jwt: JwtKeys,
     pub hasher: PasswordHasher,
     pub revocations: SessionRevocations,
+    /// Object storage behind a trait object, so tests or another backend can be swapped in.
+    pub storage: Arc<dyn ObjectStore>,
 }
 
 impl AppState {
@@ -39,7 +42,14 @@ impl AppState {
         let cpus = std::thread::available_parallelism().map_or(2, |n| n.get());
         let hasher = PasswordHasher::new(cpus * 2)?;
 
+        let s3 = S3Store::new(&config.storage).await?;
+        if config.environment == Environment::Local {
+            // Convenience for local runs and tests; in AWS, Terraform owns the bucket.
+            s3.ensure_bucket().await?;
+        }
+
         Ok(Self {
+            storage: Arc::new(s3),
             jwt: JwtKeys::new(&config.auth),
             revocations: SessionRevocations::new(
                 redis.clone(),
