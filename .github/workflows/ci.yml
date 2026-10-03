@@ -117,7 +117,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Scan image for vulnerabilities
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: securedrop-api:ci
           severity: CRITICAL,HIGH
@@ -151,9 +151,4 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
       - run: tflint --recursive --config "$PWD/.tflint.hcl" --minimum-failure-severity=warning
       - name: Checkov
-        uses: bridgecrew/checkov-action@v12
-        with:
-          directory: infra/terraform
-          framework: terraform
-          quiet: true
-          compact: true
+        run: docker run --rm -v "$PWD:/tf" bridgecrew/checkov:latest -d /tf --framework terraform --quiet --compact
