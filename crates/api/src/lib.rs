@@ -4,6 +4,7 @@
 //! they exercise exactly the same router and middleware as production.
 
 pub mod config;
+pub mod database;
 pub mod error;
 pub mod routes;
 pub mod state;
@@ -11,13 +12,22 @@ pub mod telemetry;
 
 use anyhow::Context;
 use axum::Router;
+use sqlx::PgPool;
 use tokio::net::TcpListener;
 
 use crate::{config::Config, state::AppState};
 
-/// Build the application state and router from configuration.
+/// Connect to dependencies, run migrations and build the router.
 pub async fn build_app(config: Config) -> anyhow::Result<(Router, AppState)> {
-    let state = AppState::new(config);
+    let db = database::connect(&config.database).await?;
+    database::migrate(&db).await?;
+    build_app_with_pool(config, db).await
+}
+
+/// Like [`build_app`] but with an existing pool. Tests use this with the per-test database
+/// that `#[sqlx::test]` creates (already migrated).
+pub async fn build_app_with_pool(config: Config, db: PgPool) -> anyhow::Result<(Router, AppState)> {
+    let state = AppState::new(config, db);
     let router = routes::router(state.clone());
     Ok((router, state))
 }
@@ -32,10 +42,14 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
         .with_context(|| format!("failed to bind {bind_addr}"))?;
     tracing::info!(%bind_addr, "securedrop-api listening");
 
-    axum::serve(listener, router)
-        .with_graceful_shutdown(shutdown_signal())
-        .await
-        .context("server error")
+    // ConnectInfo gives handlers/middleware the peer address (used for rate limiting).
+    axum::serve(
+        listener,
+        router.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await
+    .context("server error")
 }
 
 /// Resolves on Ctrl+C, or on SIGTERM (what ECS sends before stopping a task).
