@@ -1,0 +1,10 @@
+# Keep the build context small and secret-free.
+target/
+.git/
+.env
+.env.*
+!.env.example
+**/*.tfstate*
+**/.terraform/
+docs/
+*.securedrop-resume.json

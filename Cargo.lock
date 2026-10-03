@@ -2842,12 +2842,16 @@ dependencies = [
  "num-bigint 0.5.1",
  "percent-encoding",
  "pin-project-lite",
+ "rustls 0.23.45",
+ "rustls-native-certs",
  "ryu",
  "sha1_smol",
  "socket2 0.6.5",
  "tokio",
+ "tokio-rustls 0.26.6",
  "tokio-util",
  "url",
+ "webpki-roots",
  "xxhash-rust",
 ]
 

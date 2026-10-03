@@ -40,7 +40,7 @@ metrics = "0.24"
 metrics-exporter-prometheus = { version = "0.18", default-features = false }
 percent-encoding = "2"
 rand = "0.8"
-redis = { version = "1", features = ["tokio-comp", "connection-manager", "script"] }
+redis = { version = "1", features = ["tokio-comp", "connection-manager", "script", "tokio-rustls-comp", "tls-rustls-webpki-roots"] }
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "macros", "migrate", "uuid", "chrono", "json"] }
 tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.7", features = ["trace", "cors", "request-id", "set-header", "timeout", "limit", "catch-panic", "sensitive-headers", "util"] }

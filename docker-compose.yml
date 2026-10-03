@@ -62,6 +62,38 @@ services:
         aws --endpoint-url http://s3:9000 s3api head-bucket --bucket securedrop-local 2>/dev/null
         || aws --endpoint-url http://s3:9000 s3api create-bucket --bucket securedrop-local
 
+  # The API itself, built from deploy/docker/Dockerfile.  `docker compose up --build api`
+  api:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile
+    image: securedrop-api:local
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      s3-init: { condition: service_completed_successfully }
+    environment:
+      APP_ENV: local
+      RUST_LOG: info,securedrop_api=info,tower_http=info
+      DATABASE_URL: postgres://securedrop:securedrop-local-only@postgres:5432/securedrop
+      REDIS_URL: redis://:securedrop-local-only@redis:6379/0
+      JWT_SECRET: compose-dev-secret-change-me-0123456789abcdefghijklmnop
+      S3_BUCKET: securedrop-local
+      # The API talks to the store over the compose network, but hands out URLs that
+      # work from the host. The host name is part of the SigV4 signature.
+      S3_ENDPOINT_URL: http://s3:9000
+      S3_PUBLIC_ENDPOINT_URL: http://127.0.0.1:59000
+      S3_FORCE_PATH_STYLE: "true"
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: securedrop-local
+      AWS_SECRET_ACCESS_KEY: securedrop-local-secret
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:9100:9100"
+    read_only: true          # mirror the ECS task: immutable root filesystem
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
 volumes:
   pgdata:
   s3data:
