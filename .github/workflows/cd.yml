@@ -39,7 +39,7 @@ jobs:
 
       # No stored AWS keys: GitHub's OIDC token is exchanged for a 1-hour session of the
       # deploy role, whose trust policy only accepts this repo's `production` environment.
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
