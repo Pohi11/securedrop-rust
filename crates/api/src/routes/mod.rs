@@ -5,14 +5,24 @@ mod security;
 
 use axum::{
     Router,
-    extract::DefaultBodyLimit,
-    middleware::from_fn_with_state,
+    extract::{DefaultBodyLimit, Request},
+    middleware::{from_fn, from_fn_with_state},
     response::IntoResponse,
     routing::{delete, get, post},
 };
 use tower::ServiceBuilder;
+use tower_http::trace::{DefaultOnResponse, TraceLayer};
+use tracing::Level;
 
-use crate::{auth, error::AppError, files, middleware::rate_limit, shares, state::AppState, users};
+use crate::{
+    auth,
+    error::AppError,
+    files,
+    middleware::{client_meta::REQUEST_ID_HEADER, rate_limit, request_id},
+    shares,
+    state::AppState,
+    telemetry, users,
+};
 
 /// The API only ever receives small JSON documents (file bytes go straight to S3), so a tight
 /// body limit costs nothing and removes a whole class of memory-exhaustion attacks.
@@ -72,6 +82,7 @@ pub fn router(state: AppState) -> Router {
     let config = &state.config;
     Router::new()
         .route("/healthz", get(health::liveness))
+        .route("/readyz", get(health::readiness))
         .nest("/api/v1", api)
         .fallback(|| async { AppError::NotFound.into_response() })
         // Layers listed top-to-bottom run outermost-to-innermost on the request.
@@ -79,8 +90,30 @@ pub fn router(state: AppState) -> Router {
             ServiceBuilder::new()
                 // Turn panics into a JSON 500 instead of a dropped connection.
                 .layer(security::catch_panic())
+                // Assign/propagate x-request-id before anything logs.
+                .layer(from_fn(request_id::assign))
                 // Mark Authorization/Cookie as sensitive so tracing never records them.
                 .layer(security::sensitive_headers())
+                // One span per request; every log line inside carries method, route, request id.
+                .layer(
+                    TraceLayer::new_for_http()
+                        .make_span_with(|req: &Request| {
+                            let request_id = req
+                                .headers()
+                                .get(REQUEST_ID_HEADER)
+                                .and_then(|v| v.to_str().ok())
+                                .unwrap_or_default();
+                            // Path only, never the query string.
+                            tracing::info_span!(
+                                "http",
+                                method = %req.method(),
+                                path = %req.uri().path(),
+                                request_id,
+                            )
+                        })
+                        .on_response(DefaultOnResponse::new().level(Level::INFO)),
+                )
+                .layer(from_fn(telemetry::metrics::track_http))
                 // Bound total handler time; slow dependencies can't pile up requests forever.
                 .layer(security::timeout(config.http.request_timeout))
                 .layer(security::cors(&config.http.cors_allowed_origins))

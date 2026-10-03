@@ -35,6 +35,7 @@ pub async fn build_app(config: Config) -> anyhow::Result<(Router, AppState)> {
 /// Like [`build_app`] but with an existing pool. Tests use this with the per-test database
 /// that `#[sqlx::test]` creates (already migrated).
 pub async fn build_app_with_pool(config: Config, db: PgPool) -> anyhow::Result<(Router, AppState)> {
+    telemetry::metrics::init()?;
     let state = AppState::new(config, db).await?;
     let router = routes::router(state.clone());
     Ok((router, state))
@@ -43,8 +44,28 @@ pub async fn build_app_with_pool(config: Config, db: PgPool) -> anyhow::Result<(
 /// Run the server until SIGINT/SIGTERM, then drain in-flight requests.
 pub async fn run(config: Config) -> anyhow::Result<()> {
     let bind_addr = config.http.bind_addr;
+    let metrics_addr = config.http.metrics_addr;
+    tracing::info!(
+        environment = ?config.environment,
+        bucket = %config.storage.bucket,
+        region = %config.storage.region,
+        rate_limiting = config.rate_limit.enabled,
+        "starting securedrop-api"
+    );
     let (router, state) = build_app(config).await?;
     let cleanup = files::cleanup::spawn(state.clone());
+
+    // Internal-only metrics listener (not exposed through the load balancer).
+    let metrics_listener = TcpListener::bind(metrics_addr)
+        .await
+        .with_context(|| format!("failed to bind metrics listener {metrics_addr}"))?;
+    let metrics_router = telemetry::metrics::router(telemetry::metrics::init()?);
+    let metrics_server = tokio::spawn(async move {
+        if let Err(err) = axum::serve(metrics_listener, metrics_router).await {
+            tracing::error!(%err, "metrics listener failed");
+        }
+    });
+    tracing::info!(%metrics_addr, "metrics listening");
 
     let listener = TcpListener::bind(bind_addr)
         .await
@@ -61,6 +82,7 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
     .context("server error")?;
 
     cleanup.abort();
+    metrics_server.abort();
     Ok(())
 }
 

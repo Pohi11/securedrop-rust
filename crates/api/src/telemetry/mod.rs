@@ -1,4 +1,6 @@
-//! Logging/tracing setup.
+//! Logging/tracing setup and metrics.
+
+pub mod metrics;
 
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
