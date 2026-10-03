@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE files SET status = 'deleted', deleted_at = now(), updated_at = now()\n           WHERE id = $1 AND status = 'available'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3e835ba7c90170d45384c5afce47068efea55b5b59d3711f0b5c50371d29e490"
+}

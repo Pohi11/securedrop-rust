@@ -204,3 +204,66 @@ pub async fn claim_unpurged(
     .fetch_all(db)
     .await
 }
+
+/// Keyset pagination over the caller's own files. UUIDv7 ids sort by creation time, so
+/// `id < cursor ORDER BY id DESC` pages backwards in time without OFFSET's O(n) cost.
+pub async fn list_owned(
+    db: impl PgExecutor<'_>,
+    owner_id: Uuid,
+    before: Option<Uuid>,
+    limit: i64,
+) -> Result<Vec<FileRecord>, sqlx::Error> {
+    sqlx::query_as!(
+        FileRecord,
+        r#"SELECT id, owner_id, filename, content_type, size_bytes, sha256, object_key, status,
+                  upload_kind, s3_upload_id, part_size, part_count, s3_checksum,
+                  upload_expires_at, created_at, completed_at
+           FROM files
+           WHERE owner_id = $1 AND status IN ('pending', 'available')
+             AND ($2::uuid IS NULL OR id < $2)
+           ORDER BY id DESC
+           LIMIT $3"#,
+        owner_id,
+        before,
+        limit
+    )
+    .fetch_all(db)
+    .await
+}
+
+/// Available files other users have granted the caller access to.
+pub async fn list_shared_with(
+    db: impl PgExecutor<'_>,
+    grantee_id: Uuid,
+    before: Option<Uuid>,
+    limit: i64,
+) -> Result<Vec<FileRecord>, sqlx::Error> {
+    sqlx::query_as!(
+        FileRecord,
+        r#"SELECT f.id, f.owner_id, f.filename, f.content_type, f.size_bytes, f.sha256, f.object_key,
+                  f.status, f.upload_kind, f.s3_upload_id, f.part_size, f.part_count, f.s3_checksum,
+                  f.upload_expires_at, f.created_at, f.completed_at
+           FROM files f JOIN file_grants g ON g.file_id = f.id
+           WHERE g.grantee_id = $1 AND f.status = 'available'
+             AND ($2::uuid IS NULL OR f.id < $2)
+           ORDER BY f.id DESC
+           LIMIT $3"#,
+        grantee_id,
+        before,
+        limit
+    )
+    .fetch_all(db)
+    .await
+}
+
+/// available -> deleted (compare-and-set, like `mark_available`).
+pub async fn mark_deleted(db: impl PgExecutor<'_>, id: Uuid) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query!(
+        r#"UPDATE files SET status = 'deleted', deleted_at = now(), updated_at = now()
+           WHERE id = $1 AND status = 'available'"#,
+        id
+    )
+    .execute(db)
+    .await?;
+    Ok(result.rows_affected() == 1)
+}

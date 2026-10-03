@@ -205,3 +205,70 @@ pub struct UploadProgressResponse {
     pub missing_parts: Vec<u32>,
     pub upload_expires_at: DateTime<Utc>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileListResponse {
+    pub files: Vec<FileResponse>,
+    /// Pass as `?before=` to fetch the next page. `None` when there are no more results.
+    pub next_cursor: Option<Uuid>,
+}
+
+// ---------------------------------------------------------------------------------------------
+// Sharing
+// ---------------------------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateGrantRequest {
+    pub email: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GrantResponse {
+    pub user_id: Uuid,
+    pub email: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CreateShareLinkRequest {
+    /// Lifetime of the link in seconds (default 24h, max 7 days).
+    #[serde(default)]
+    pub expires_in_secs: Option<u64>,
+    /// Maximum number of downloads (unlimited until expiry if omitted).
+    #[serde(default)]
+    pub max_downloads: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShareLinkResponse {
+    pub id: Uuid,
+    pub file_id: Uuid,
+    pub expires_at: DateTime<Utc>,
+    pub max_downloads: Option<u32>,
+    pub download_count: u32,
+    pub revoked: bool,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Returned once, at creation. The token is never retrievable again (only its hash is stored).
+#[derive(Clone, Serialize, Deserialize)]
+pub struct CreatedShareLinkResponse {
+    pub link: ShareLinkResponse,
+    pub token: String,
+}
+
+impl std::fmt::Debug for CreatedShareLinkResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CreatedShareLinkResponse")
+            .field("link", &self.link)
+            .field("token", &"[REDACTED]")
+            .finish()
+    }
+}
+
+/// Redeeming a share link. The token travels in the body, not the URL, so it does not end up
+/// in access logs, proxy logs or browser history.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct RedeemShareRequest {
+    pub token: String,
+}

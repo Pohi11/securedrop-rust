@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO file_grants (file_id, grantee_id, granted_by) VALUES ($1, $2, $3)\n           ON CONFLICT (file_id, grantee_id) DO UPDATE SET file_id = EXCLUDED.file_id\n           RETURNING created_at",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "file_grants",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "d0394c84a15ea85215437727aa868cac2362512b1a4db54da9747d22246d5a4e"
+}

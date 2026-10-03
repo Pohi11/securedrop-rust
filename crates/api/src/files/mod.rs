@@ -1,3 +1,4 @@
+pub mod authz;
 pub mod cleanup;
 pub mod handlers;
 pub mod model;

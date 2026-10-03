@@ -1,16 +1,20 @@
 //! HTTP handlers for uploads and files.
 
-use axum::{extract::State, http::StatusCode};
-use securedrop_common::{
-    CreateUploadRequest, CreateUploadResponse, DownloadResponse, FileResponse, PresignPartsRequest,
-    PresignPartsResponse, UploadProgressResponse,
+use axum::{
+    extract::{Query, State},
+    http::StatusCode,
 };
+use securedrop_common::{
+    CreateUploadRequest, CreateUploadResponse, DownloadResponse, FileListResponse, FileResponse,
+    PresignPartsRequest, PresignPartsResponse, UploadProgressResponse,
+};
+use serde::Deserialize;
 use uuid::Uuid;
 
 use super::service;
 use crate::{
     auth::extractor::AuthUser,
-    error::AppResult,
+    error::{AppError, AppResult},
     extract::{ApiJson, ApiPath},
     middleware::client_meta::ClientMeta,
     state::AppState,
@@ -93,5 +97,41 @@ pub async fn abort_upload(
     ApiPath(file_id): ApiPath<Uuid>,
 ) -> AppResult<StatusCode> {
     service::abort_upload(&state, user.user_id, file_id, &client).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ListQuery {
+    /// `owned` (default) or `shared` (files other users granted you).
+    #[serde(default)]
+    pub scope: Option<String>,
+    pub before: Option<Uuid>,
+    pub limit: Option<i64>,
+}
+
+/// `GET /api/v1/files?scope=owned|shared&before=<id>&limit=<n>`
+pub async fn list_files(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Query(q): Query<ListQuery>,
+) -> AppResult<ApiJson<FileListResponse>> {
+    let shared = match q.scope.as_deref() {
+        None | Some("owned") => false,
+        Some("shared") => true,
+        Some(_) => return Err(AppError::validation("scope must be 'owned' or 'shared'")),
+    };
+    Ok(ApiJson(
+        service::list_files(&state, user.user_id, shared, q.before, q.limit).await?,
+    ))
+}
+
+/// `DELETE /api/v1/files/{id}`
+pub async fn delete_file(
+    State(state): State<AppState>,
+    user: AuthUser,
+    client: ClientMeta,
+    ApiPath(file_id): ApiPath<Uuid>,
+) -> AppResult<StatusCode> {
+    service::delete_file(&state, user.user_id, file_id, &client).await?;
     Ok(StatusCode::NO_CONTENT)
 }

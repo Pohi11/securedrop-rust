@@ -12,6 +12,7 @@ pub mod extract;
 pub mod files;
 pub mod middleware;
 pub mod routes;
+pub mod shares;
 pub mod state;
 pub mod storage;
 pub mod telemetry;

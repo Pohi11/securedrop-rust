@@ -13,15 +13,16 @@ use std::collections::{BTreeMap, BTreeSet};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use chrono::Utc;
 use securedrop_common::{
-    CreateUploadRequest, CreateUploadResponse, DownloadResponse, FileResponse, PresignPartsRequest,
-    PresignPartsResponse, PresignedPart, UploadInstructions, UploadProgressResponse,
-    UploadedPartInfo,
+    CreateUploadRequest, CreateUploadResponse, DownloadResponse, FileListResponse, FileResponse,
+    PresignPartsRequest, PresignPartsResponse, PresignedPart, UploadInstructions,
+    UploadProgressResponse, UploadedPartInfo,
 };
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::{
+    authz::{Action, load_authorized},
     model::{self, FileRecord, KIND_MULTIPART, KIND_SINGLE, STATUS_AVAILABLE, STATUS_PENDING},
     repo,
     validation::{self, SNIFF_LEN},
@@ -188,7 +189,7 @@ pub async fn presign_parts(
     file_id: Uuid,
     req: PresignPartsRequest,
 ) -> AppResult<PresignPartsResponse> {
-    let file = load_owned(state, user_id, file_id).await?;
+    let file = load_authorized(state, user_id, file_id, Action::ManageUpload).await?;
     let (upload_id, part_size, part_count) = pending_multipart(&file)?;
 
     if req.parts.is_empty() || req.parts.len() > MAX_PARTS_PER_PRESIGN {
@@ -244,7 +245,7 @@ pub async fn upload_progress(
     user_id: Uuid,
     file_id: Uuid,
 ) -> AppResult<UploadProgressResponse> {
-    let file = load_owned(state, user_id, file_id).await?;
+    let file = load_authorized(state, user_id, file_id, Action::ManageUpload).await?;
     let (upload_id, part_size, part_count) = pending_multipart(&file)?;
 
     let uploaded = state
@@ -277,7 +278,7 @@ pub async fn complete_upload(
     file_id: Uuid,
     client: &ClientMeta,
 ) -> AppResult<FileResponse> {
-    let file = load_owned(state, user_id, file_id).await?;
+    let file = load_authorized(state, user_id, file_id, Action::ManageUpload).await?;
     match file.status.as_str() {
         // Idempotent: retrying "complete" after a network blip is safe.
         STATUS_AVAILABLE => return Ok(file.to_response()),
@@ -321,7 +322,7 @@ pub async fn complete_upload(
         repo::mark_available(&state.db, file.id, info.checksum_sha256.as_deref()).await?
     else {
         // Lost a race with a concurrent complete/cleanup; report the current state.
-        return load_owned(state, user_id, file_id)
+        return load_authorized(state, user_id, file_id, Action::ViewMetadata)
             .await
             .map(|f| f.to_response());
     };
@@ -429,7 +430,7 @@ pub async fn abort_upload(
     file_id: Uuid,
     client: &ClientMeta,
 ) -> AppResult<()> {
-    let file = load_owned(state, user_id, file_id).await?;
+    let file = load_authorized(state, user_id, file_id, Action::ManageUpload).await?;
     if file.status != STATUS_PENDING {
         return Err(AppError::Conflict("upload is not pending".into()));
     }
@@ -451,8 +452,67 @@ pub async fn abort_upload(
     Ok(())
 }
 
+/// Delete a file: hide it immediately, then remove the bytes. If the S3 delete fails, the
+/// row is still `deleted` (inaccessible) and the cleanup worker finishes the purge.
+pub async fn delete_file(
+    state: &AppState,
+    user_id: Uuid,
+    file_id: Uuid,
+    client: &ClientMeta,
+) -> AppResult<()> {
+    let file = load_authorized(state, user_id, file_id, Action::Delete).await?;
+    if file.status == STATUS_PENDING {
+        return Err(AppError::Conflict(
+            "abort the upload instead (DELETE /uploads/{id})".into(),
+        ));
+    }
+    if !repo::mark_deleted(&state.db, file.id).await? {
+        return Err(AppError::NotFound);
+    }
+    purge_storage(state, file.id, &file.object_key, None).await;
+    AuditEvent::new("file.deleted", Outcome::Success)
+        .actor(user_id)
+        .target("file", file.id)
+        .record(&state.db, client)
+        .await;
+    Ok(())
+}
+
+pub const DEFAULT_PAGE_SIZE: i64 = 50;
+pub const MAX_PAGE_SIZE: i64 = 200;
+
+pub async fn list_files(
+    state: &AppState,
+    user_id: Uuid,
+    shared: bool,
+    before: Option<Uuid>,
+    limit: Option<i64>,
+) -> AppResult<FileListResponse> {
+    let limit = limit.unwrap_or(DEFAULT_PAGE_SIZE).clamp(1, MAX_PAGE_SIZE);
+    // Fetch one extra row to learn whether another page exists.
+    let mut rows = if shared {
+        repo::list_shared_with(&state.db, user_id, before, limit + 1).await?
+    } else {
+        repo::list_owned(&state.db, user_id, before, limit + 1).await?
+    };
+    let has_more = i64::try_from(rows.len()).unwrap_or(i64::MAX) > limit;
+    rows.truncate(usize::try_from(limit).unwrap_or(0));
+    Ok(FileListResponse {
+        next_cursor: if has_more {
+            rows.last().map(|f| f.id)
+        } else {
+            None
+        },
+        files: rows.iter().map(FileRecord::to_response).collect(),
+    })
+}
+
 pub async fn get_file(state: &AppState, user_id: Uuid, file_id: Uuid) -> AppResult<FileResponse> {
-    Ok(load_owned(state, user_id, file_id).await?.to_response())
+    Ok(
+        load_authorized(state, user_id, file_id, Action::ViewMetadata)
+            .await?
+            .to_response(),
+    )
 }
 
 pub async fn download(
@@ -461,7 +521,7 @@ pub async fn download(
     file_id: Uuid,
     client: &ClientMeta,
 ) -> AppResult<DownloadResponse> {
-    let file = load_owned(state, user_id, file_id).await?;
+    let file = load_authorized(state, user_id, file_id, Action::Download).await?;
     if file.status != STATUS_AVAILABLE {
         return Err(AppError::Conflict(
             "file is not available for download".into(),
@@ -484,7 +544,12 @@ pub async fn download(
         .target("file", file.id)
         .record(&state.db, client)
         .await;
-    metrics::counter!("securedrop_downloads_total", "via" => "owner").increment(1);
+    let via = if file.owner_id == user_id {
+        "owner"
+    } else {
+        "grant"
+    };
+    metrics::counter!("securedrop_downloads_total", "via" => via).increment(1);
 
     Ok(DownloadResponse {
         file_id: file.id,
@@ -493,15 +558,6 @@ pub async fn download(
         sha256: hex::encode(&file.sha256),
         request: request.into(),
     })
-}
-
-/// Phase 03 authorization: owners only. A file that exists but belongs to someone else is
-/// reported as 404, exactly like a file that does not exist (no existence oracle).
-async fn load_owned(state: &AppState, user_id: Uuid, file_id: Uuid) -> AppResult<FileRecord> {
-    match repo::find_by_id(&state.db, file_id).await? {
-        Some(file) if file.owner_id == user_id => Ok(file),
-        _ => Err(AppError::NotFound),
-    }
 }
 
 /// The multipart fields of a pending multipart upload, or a 409 if it isn't one.

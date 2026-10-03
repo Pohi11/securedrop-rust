@@ -7,7 +7,7 @@ use axum::{
     routing::{delete, get, post},
 };
 
-use crate::{auth, files, state::AppState, users};
+use crate::{auth, files, shares, state::AppState, users};
 
 pub fn router(state: AppState) -> Router {
     let auth_routes = Router::new()
@@ -30,7 +30,28 @@ pub fn router(state: AppState) -> Router {
             "/uploads/{id}/complete",
             post(files::handlers::complete_upload),
         )
-        .route("/files/{id}", get(files::handlers::get_file))
+        .route("/files", get(files::handlers::list_files))
+        .route(
+            "/files/{id}",
+            get(files::handlers::get_file).delete(files::handlers::delete_file),
+        )
+        .route(
+            "/files/{id}/grants",
+            get(shares::handlers::list_grants).post(shares::handlers::create_grant),
+        )
+        .route(
+            "/files/{id}/grants/{user_id}",
+            delete(shares::handlers::revoke_grant),
+        )
+        .route(
+            "/files/{id}/share-links",
+            get(shares::handlers::list_links).post(shares::handlers::create_link),
+        )
+        .route(
+            "/files/{id}/share-links/{link_id}",
+            delete(shares::handlers::revoke_link),
+        )
+        .route("/shared/download", post(shares::handlers::redeem))
         .route("/files/{id}/download", get(files::handlers::download));
 
     Router::new()

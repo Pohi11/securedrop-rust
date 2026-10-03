@@ -1,0 +1,105 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO share_links (id, file_id, created_by, token_hash, expires_at, max_downloads)\n           VALUES ($1, $2, $3, $4, $5, $6)\n           RETURNING id, file_id, expires_at, max_downloads, download_count, revoked_at, created_at",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "share_links",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "file_id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "share_links",
+            "name": "file_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "expires_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "share_links",
+            "name": "expires_at"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "max_downloads",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "share_links",
+            "name": "max_downloads"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "download_count",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "share_links",
+            "name": "download_count"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "revoked_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "share_links",
+            "name": "revoked_at"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "created_at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "share_links",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Bytea",
+        "Timestamptz",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "a2115611f8c748363dc1b91b2c7ae5ef46ffd2cad8e41ddaea5753cd97a246af"
+}
