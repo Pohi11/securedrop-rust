@@ -68,6 +68,9 @@ resource "aws_vpc_security_group_ingress_rule" "app_from_alb" {
 # Load balancer
 # =============================================================================================
 
+# Internet-facing on purpose: this is the public API entry point, fronted by WAF, and it only
+# forwards to the API tasks' security group.
+#trivy:ignore:AWS-0053
 resource "aws_lb" "this" {
   #checkov:skip=CKV2_AWS_28:The WAF web ACL is associated in modules/waf (enabled by default via enable_waf).
   name                       = "${var.name}-alb"

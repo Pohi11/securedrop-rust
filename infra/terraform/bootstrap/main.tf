@@ -41,11 +41,42 @@ resource "aws_s3_bucket_versioning" "state" {
   }
 }
 
+# Dedicated customer-managed key for state: state files describe the whole environment, so
+# who can decrypt them is controlled by this key's policy (and every use lands in CloudTrail).
+data "aws_iam_policy_document" "state_key" {
+  #checkov:skip=CKV_AWS_109:In a key policy, Resource "*" means "this key"; use is delegated to IAM in this account.
+  #checkov:skip=CKV_AWS_111:Same as above: key policies are scoped to their own key.
+  #checkov:skip=CKV_AWS_356:Same as above.
+  # Administration and use are delegated to IAM in this account (the deploying role and CI).
+  statement {
+    sid       = "AccountAdministration"
+    actions   = ["kms:*"]
+    resources = ["*"]
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+  }
+}
+
+resource "aws_kms_key" "state" {
+  description             = "Terraform state encryption"
+  enable_key_rotation     = true
+  deletion_window_in_days = 30
+  policy                  = data.aws_iam_policy_document.state_key.json
+}
+
+resource "aws_kms_alias" "state" {
+  name          = "alias/securedrop-tfstate"
+  target_key_id = aws_kms_key.state.key_id
+}
+
 resource "aws_s3_bucket_server_side_encryption_configuration" "state" {
   bucket = aws_s3_bucket.state.id
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "aws:kms"
+      sse_algorithm     = "aws:kms"
+      kms_master_key_id = aws_kms_key.state.arn
     }
     bucket_key_enabled = true
   }
@@ -106,4 +137,8 @@ resource "aws_s3_bucket_policy" "state" {
 
 output "state_bucket" {
   value = aws_s3_bucket.state.id
+}
+
+output "state_kms_key_arn" {
+  value = aws_kms_key.state.arn
 }

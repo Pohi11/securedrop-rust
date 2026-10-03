@@ -21,3 +21,8 @@ output "data_subnet_ids" {
 output "s3_endpoint_id" {
   value = aws_vpc_endpoint.s3.id
 }
+
+output "s3_prefix_list_id" {
+  description = "Managed prefix list of S3 public IP ranges, routed through the gateway endpoint."
+  value       = aws_vpc_endpoint.s3.prefix_list_id
+}

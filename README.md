@@ -14,7 +14,7 @@ Client ──JSON──► ALB + WAF ──► Rust API (ECS Fargate) ──► 
 - **Careful authentication.** Argon2id behind a concurrency limit, timing-equalised logins, 15-minute JWTs, and rotating refresh tokens with **family-wide reuse detection**. Sessions are revoked instantly through a Redis denylist.
 - **Authorization as one pure function.** IDOR-proof, 404 for strangers (no existence oracle), read-only grants, and hashed, count-limited share links with an atomic counter (verified with a 25-way race).
 - **Hardening.** Distributed GCRA rate limiting in Redis (Lua), security headers, strict CORS, body limits, timeouts, an append-only audit trail, request IDs, Prometheus metrics, and separate liveness and readiness probes.
-- **Infrastructure as code.** A 3-tier VPC with endpoints, a customer-managed KMS key everywhere, a TLS-only and app-only bucket policy, GuardDuty malware gating, RDS and Valkey with **secrets that never enter Terraform state** (ephemeral values and write-only arguments), WAF, alarms, and keyless GitHub OIDC deploys. Checkov: 360 passed, 0 failed.
+- **Infrastructure as code.** A 3-tier VPC with endpoints, a customer-managed KMS key everywhere, a TLS-only and app-only bucket policy, GuardDuty malware gating, RDS and Valkey with **secrets that never enter Terraform state** (ephemeral values and write-only arguments), WAF, alarms, and keyless GitHub OIDC deploys. Checkov: 374 passed, 0 failed; Trivy clean.
 - **Supply chain.** cargo-deny, Trivy, gitleaks and Dependabot in CI. The first cargo-deny run found real advisories (a duplicate legacy TLS stack and an RSA timing attack pulled in by unused default features), which were fixed at the root rather than suppressed.
 
 ## Tech stack

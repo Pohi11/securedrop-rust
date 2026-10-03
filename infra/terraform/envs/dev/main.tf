@@ -43,14 +43,25 @@ resource "aws_security_group" "api" {
   }
 }
 
-# Least-privilege egress: HTTPS (AWS APIs via endpoints/NAT), Postgres and Valkey inside the VPC.
-resource "aws_vpc_security_group_egress_rule" "api_https" {
+# Least-privilege egress: no route to arbitrary internet hosts. Every AWS API the service uses
+# has a VPC endpoint, so HTTPS only needs to reach the VPC (interface endpoints for ECR, Logs,
+# Secrets Manager, KMS, STS) and the S3 prefix list (gateway endpoint, incl. ECR image layers).
+resource "aws_vpc_security_group_egress_rule" "api_https_endpoints" {
   security_group_id = aws_security_group.api.id
-  cidr_ipv4         = "0.0.0.0/0"
+  cidr_ipv4         = module.network.vpc_cidr
   ip_protocol       = "tcp"
   from_port         = 443
   to_port           = 443
-  description       = "AWS APIs (S3, KMS, Secrets Manager, ECR, Logs)"
+  description       = "Interface VPC endpoints (ECR, Logs, Secrets Manager, KMS, STS)"
+}
+
+resource "aws_vpc_security_group_egress_rule" "api_https_s3" {
+  security_group_id = aws_security_group.api.id
+  prefix_list_id    = module.network.s3_prefix_list_id
+  ip_protocol       = "tcp"
+  from_port         = 443
+  to_port           = 443
+  description       = "S3 via the gateway endpoint"
 }
 
 resource "aws_vpc_security_group_egress_rule" "api_postgres" {
