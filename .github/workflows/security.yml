@@ -16,7 +16,7 @@ jobs:
     name: RustSec advisories
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check advisories
@@ -25,7 +25,7 @@ jobs:
     name: secret scanning
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # scan the whole history, not just the last commit
       - uses: gitleaks/gitleaks-action@v2
@@ -36,7 +36,7 @@ jobs:
     name: Trivy (dependencies, IaC, Dockerfile misconfigurations)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs

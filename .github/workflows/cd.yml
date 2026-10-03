@@ -29,7 +29,7 @@ jobs:
       ECS_SERVICE: ${{ vars.ECS_SERVICE }}                 # terraform output ecs_service
       TASK_FAMILY: ${{ vars.TASK_DEFINITION_FAMILY }}      # terraform output task_definition_family
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref }}
 
