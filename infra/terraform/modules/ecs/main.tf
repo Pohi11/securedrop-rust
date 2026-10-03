@@ -8,7 +8,6 @@
 #          RDS / Valkey (data subnets)   S3 / KMS / Secrets / Logs (VPC endpoints)
 
 data "aws_caller_identity" "current" {}
-data "aws_partition" "current" {}
 
 locals {
   container_name = "api"

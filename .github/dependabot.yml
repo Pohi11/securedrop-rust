@@ -1,0 +1,22 @@
+# Automated dependency update PRs. Each one runs the full CI (tests, cargo-deny, Trivy).
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      aws-sdk:
+        patterns: ["aws-*"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /deploy/docker
+    schedule:
+      interval: weekly
+  - package-ecosystem: terraform
+    directory: /infra/terraform/envs/dev
+    schedule:
+      interval: weekly

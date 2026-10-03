@@ -1,0 +1,95 @@
+name: CD
+
+# Deploys are manual: run from the Actions tab. The `production` GitHub environment can
+# require reviewer approval, and it is the only context the AWS deploy role trusts.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to deploy
+        required: true
+        default: main
+
+permissions:
+  contents: read
+  id-token: write # mint the OIDC token exchanged for short-lived AWS credentials
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false # never interrupt a deployment half-way
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ECR_REPOSITORY_URL: ${{ vars.ECR_REPOSITORY_URL }}   # terraform output ecr_repository_url
+      ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}                 # terraform output ecs_cluster
+      ECS_SERVICE: ${{ vars.ECS_SERVICE }}                 # terraform output ecs_service
+      TASK_FAMILY: ${{ vars.TASK_DEFINITION_FAMILY }}      # terraform output task_definition_family
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Resolve image tag (immutable, = commit SHA)
+        id: meta
+        run: echo "tag=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      # No stored AWS keys: GitHub's OIDC token is exchanged for a 1-hour session of the
+      # deploy role, whose trust policy only accepts this repo's `production` environment.
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/Dockerfile
+          tags: ${{ env.ECR_REPOSITORY_URL }}:${{ steps.meta.outputs.tag }}
+          load: true
+          provenance: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Gate: nothing with a fixable CRITICAL/HIGH vulnerability reaches the registry.
+      - name: Scan before push
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.ECR_REPOSITORY_URL }}:${{ steps.meta.outputs.tag }}
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Push
+        run: docker push "$ECR_REPOSITORY_URL:${{ steps.meta.outputs.tag }}"
+
+      - name: Fetch current task definition
+        run: |
+          aws ecs describe-task-definition --task-definition "$TASK_FAMILY" \
+            --query taskDefinition > task-definition.json
+
+      - name: Render task definition with the new image
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: api
+          image: ${{ env.ECR_REPOSITORY_URL }}:${{ steps.meta.outputs.tag }}
+
+      # Rolling deploy; the service's circuit breaker rolls back automatically if new tasks
+      # fail their health checks. Migrations run on start-up under a Postgres advisory lock.
+      - name: Deploy
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          service: ${{ env.ECS_SERVICE }}
+          wait-for-service-stability: true
