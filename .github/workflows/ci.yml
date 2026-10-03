@@ -142,7 +142,7 @@ jobs:
             terraform -chdir=$dir init -backend=false -input=false -lockfile=readonly
             terraform -chdir=$dir validate
           done
-      - uses: terraform-linters/setup-tflint@v4
+      - uses: terraform-linters/setup-tflint@v6
         with:
           github_token: ${{ github.token }}
       - run: tflint --init --config "$PWD/.tflint.hcl"
