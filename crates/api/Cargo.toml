@@ -49,7 +49,6 @@ zxcvbn = "3"
 
 [dev-dependencies]
 reqwest.workspace = true
-sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "postgres", "macros", "migrate"] }
 
 [lints]
 workspace = true

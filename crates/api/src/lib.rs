@@ -3,12 +3,17 @@
 //! `main.rs` is a thin wrapper around [`run`]; integration tests use [`build_app`] directly so
 //! they exercise exactly the same router and middleware as production.
 
+pub mod audit;
+pub mod auth;
 pub mod config;
 pub mod database;
 pub mod error;
+pub mod extract;
+pub mod middleware;
 pub mod routes;
 pub mod state;
 pub mod telemetry;
+pub mod users;
 
 use anyhow::Context;
 use axum::Router;
@@ -27,7 +32,7 @@ pub async fn build_app(config: Config) -> anyhow::Result<(Router, AppState)> {
 /// Like [`build_app`] but with an existing pool. Tests use this with the per-test database
 /// that `#[sqlx::test]` creates (already migrated).
 pub async fn build_app_with_pool(config: Config, db: PgPool) -> anyhow::Result<(Router, AppState)> {
-    let state = AppState::new(config, db);
+    let state = AppState::new(config, db).await?;
     let router = routes::router(state.clone());
     Ok((router, state))
 }

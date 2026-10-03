@@ -20,6 +20,11 @@ pub type AppResult<T> = Result<T, AppError>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
+    /// The request is syntactically broken (malformed JSON, wrong content type).
+    #[error("bad request: {0}")]
+    BadRequest(String),
+
+    /// The request is well-formed but semantically invalid (weak password, bad email...).
     #[error("validation failed: {0}")]
     Validation(String),
 
@@ -68,6 +73,7 @@ impl AppError {
 
     fn status_and_code(&self) -> (StatusCode, &'static str) {
         match self {
+            Self::BadRequest(_) => (StatusCode::BAD_REQUEST, "bad_request"),
             Self::Validation(_) => (StatusCode::UNPROCESSABLE_ENTITY, "validation_error"),
             Self::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized"),
             Self::InvalidCredentials => (StatusCode::UNAUTHORIZED, "invalid_credentials"),
@@ -114,6 +120,11 @@ impl IntoResponse for AppError {
         };
         let mut response = (status, Json(body)).into_response();
 
+        if matches!(self, Self::Unauthorized) {
+            response
+                .headers_mut()
+                .insert(header::WWW_AUTHENTICATE, HeaderValue::from_static("Bearer"));
+        }
         if let Self::RateLimited { retry_after } = self {
             let secs = retry_after.as_secs().max(1);
             if let Ok(value) = HeaderValue::from_str(&secs.to_string()) {

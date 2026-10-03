@@ -60,3 +60,74 @@ impl TestApp {
         format!("{}{}", self.base_url, path)
     }
 }
+
+pub const PASSWORD: &str = "violet-tractor-mango-91";
+
+impl TestApp {
+    pub async fn register(&self, email: &str, password: &str) -> reqwest::Response {
+        self.client
+            .post(self.url("/api/v1/auth/register"))
+            .json(&serde_json::json!({ "email": email, "password": password }))
+            .send()
+            .await
+            .unwrap()
+    }
+
+    pub async fn login(&self, email: &str, password: &str) -> reqwest::Response {
+        self.client
+            .post(self.url("/api/v1/auth/login"))
+            .json(&serde_json::json!({ "email": email, "password": password }))
+            .send()
+            .await
+            .unwrap()
+    }
+
+    /// Register + login, returning the token pair.
+    pub async fn signup(&self, email: &str) -> securedrop_common::TokenResponse {
+        assert_eq!(self.register(email, PASSWORD).await.status(), 201);
+        let resp = self.login(email, PASSWORD).await;
+        assert_eq!(resp.status(), 200);
+        resp.json().await.unwrap()
+    }
+
+    pub async fn refresh(&self, refresh_token: &str) -> reqwest::Response {
+        self.client
+            .post(self.url("/api/v1/auth/refresh"))
+            .json(&serde_json::json!({ "refresh_token": refresh_token }))
+            .send()
+            .await
+            .unwrap()
+    }
+
+    pub async fn get_authed(&self, path: &str, token: &str) -> reqwest::Response {
+        self.client
+            .get(self.url(path))
+            .bearer_auth(token)
+            .send()
+            .await
+            .unwrap()
+    }
+
+    pub async fn post_authed(
+        &self,
+        path: &str,
+        token: &str,
+        body: serde_json::Value,
+    ) -> reqwest::Response {
+        self.client
+            .post(self.url(path))
+            .bearer_auth(token)
+            .json(&body)
+            .send()
+            .await
+            .unwrap()
+    }
+}
+
+pub async fn error_code(resp: reqwest::Response) -> String {
+    let body: serde_json::Value = resp.json().await.unwrap();
+    body["error"]["code"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string()
+}
