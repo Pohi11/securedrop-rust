@@ -1,0 +1,10 @@
+# Copy to terraform.tfvars and fill in. (terraform.tfvars is gitignored.)
+region          = "us-east-1"
+environment     = "dev"
+certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/00000000-0000-0000-0000-000000000000"
+
+# Optional
+# alarm_email          = "oncall@example.com"
+# github_repository    = "your-github-user/securedrop"
+# cors_allowed_origins = ["https://app.example.com"]
+# deletion_protection  = false   # dev only: allow `terraform destroy`

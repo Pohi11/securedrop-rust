@@ -1,0 +1,15 @@
+output "bucket_name" {
+  value = aws_s3_bucket.files.id
+}
+
+output "bucket_arn" {
+  value = aws_s3_bucket.files.arn
+}
+
+output "log_bucket_name" {
+  value = aws_s3_bucket.logs.id
+}
+
+output "log_bucket_arn" {
+  value = aws_s3_bucket.logs.arn
+}

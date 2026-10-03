@@ -1,0 +1,6 @@
+# terraform init -backend-config=backend.hcl
+bucket       = "securedrop-tfstate-123456789012"   # created by ../../bootstrap
+key          = "securedrop/dev/terraform.tfstate"
+region       = "us-east-1"
+encrypt      = true
+use_lockfile = true                                 # S3-native state locking

@@ -5,3 +5,7 @@
 /infra/terraform/**/*.tfstate*
 /infra/terraform/**/*.tfplan
 /infra/terraform/**/.terraform.lock.hcl.bak
+
+# Terraform local files
+**/terraform.tfvars
+**/backend.hcl
