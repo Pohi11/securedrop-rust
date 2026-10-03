@@ -42,7 +42,7 @@ jsonwebtoken = { version = "11", features = ["aws_lc_rs"] }
 metrics = "0.24"
 metrics-exporter-prometheus = { version = "0.18", default-features = false }
 percent-encoding = "2"
-rand = "0.8"
+rand = "0.10"
 redis = { version = "1", features = ["tokio-comp", "connection-manager", "script", "tokio-rustls-comp", "tls-rustls-webpki-roots"] }
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "macros", "migrate", "uuid", "chrono", "json"] }
 tower = { version = "0.5", features = ["util"] }
