@@ -1,0 +1,3 @@
+# LF everywhere: sqlx checksums migration files, and shell scripts run in Linux containers.
+* text=auto eol=lf
+*.png binary
