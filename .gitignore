@@ -1,0 +1,7 @@
+/target
+.env
+*.securedrop-resume.json
+/infra/terraform/**/.terraform/
+/infra/terraform/**/*.tfstate*
+/infra/terraform/**/*.tfplan
+/infra/terraform/**/.terraform.lock.hcl.bak

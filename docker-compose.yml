@@ -1,0 +1,67 @@
+# Local development stack. Nothing here is production configuration:
+# credentials are throwaway values, and production uses RDS, ElastiCache and real S3
+# (see infra/terraform).
+name: securedrop
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: securedrop
+      POSTGRES_PASSWORD: securedrop-local-only
+      POSTGRES_DB: securedrop
+    ports: ["127.0.0.1:55432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U securedrop -d securedrop"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7.4-alpine
+    # Require a password locally too, so the connection string format matches production.
+    command: ["redis-server", "--requirepass", "securedrop-local-only", "--appendonly", "no"]
+    ports: ["127.0.0.1:56379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "securedrop-local-only", "--no-auth-warning", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # S3-compatible object store (RustFS, written in Rust). Stands in for Amazon S3 locally:
+  # supports SigV4 presigned URLs, multipart uploads and SHA-256 checksums.
+  s3:
+    image: rustfs/rustfs:latest
+    environment:
+      RUSTFS_ACCESS_KEY: securedrop-local
+      RUSTFS_SECRET_KEY: securedrop-local-secret
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ENABLE: "false"
+    ports: ["127.0.0.1:59000:9000"]
+    volumes: [s3data:/data]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/health || wget -qO- http://localhost:9000/health || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # One-shot job that creates the bucket (Terraform does this in AWS).
+  s3-init:
+    image: amazon/aws-cli:latest
+    depends_on:
+      s3: { condition: service_healthy }
+    environment:
+      AWS_ACCESS_KEY_ID: securedrop-local
+      AWS_SECRET_ACCESS_KEY: securedrop-local-secret
+      AWS_DEFAULT_REGION: us-east-1
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        aws --endpoint-url http://s3:9000 s3api head-bucket --bucket securedrop-local 2>/dev/null
+        || aws --endpoint-url http://s3:9000 s3api create-bucket --bucket securedrop-local
+
+volumes:
+  pgdata:
+  s3data:

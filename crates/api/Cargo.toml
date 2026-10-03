@@ -1,0 +1,54 @@
+[package]
+name = "securedrop-api"
+description = "SecureDrop API server: auth, file metadata and presigned S3 transfers"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "securedrop-api"
+path = "src/main.rs"
+
+[dependencies]
+securedrop-common.workspace = true
+
+anyhow.workspace = true
+async-trait.workspace = true
+axum.workspace = true
+base64.workspace = true
+chrono.workspace = true
+hex.workspace = true
+secrecy.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+argon2 = { version = "0.6", features = ["zeroize"] }
+aws-config = { version = "1", features = ["behavior-version-latest"] }
+aws-sdk-s3 = { version = "1", features = ["behavior-version-latest"] }
+dotenvy = "0.15"
+jsonwebtoken = { version = "11", features = ["rust_crypto"] }
+metrics = "0.24"
+metrics-exporter-prometheus = { version = "0.18", default-features = false }
+percent-encoding = "2"
+rand = "0.8"
+redis = { version = "1", features = ["tokio-comp", "connection-manager", "script"] }
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "macros", "migrate", "uuid", "chrono", "json"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.7", features = ["trace", "cors", "request-id", "set-header", "timeout", "limit", "catch-panic", "sensitive-headers", "util"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+zxcvbn = "3"
+
+[dev-dependencies]
+reqwest.workspace = true
+
+[lints]
+workspace = true
