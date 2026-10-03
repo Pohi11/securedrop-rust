@@ -1,14 +1,16 @@
 //! Opaque random tokens (refresh tokens, share-link tokens).
 
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use rand::{RngCore, rngs::OsRng};
 use sha2::{Digest, Sha256};
 
 /// 32 bytes = 256 bits from the operating system CSPRNG, base64url-encoded (43 chars).
-pub fn generate_token() -> String {
+///
+/// Reads the OS generator directly via `getrandom`; an unavailable RNG surfaces as an error
+/// (a 500 for the caller) instead of a panic.
+pub fn generate_token() -> Result<String, getrandom::Error> {
     let mut bytes = [0u8; 32];
-    OsRng.fill_bytes(&mut bytes);
-    URL_SAFE_NO_PAD.encode(bytes)
+    getrandom::fill(&mut bytes)?;
+    Ok(URL_SAFE_NO_PAD.encode(bytes))
 }
 
 /// What we store in the database instead of the token itself.
@@ -22,8 +24,8 @@ mod tests {
 
     #[test]
     fn tokens_are_unique_and_url_safe() {
-        let a = generate_token();
-        let b = generate_token();
+        let a = generate_token().unwrap();
+        let b = generate_token().unwrap();
         assert_ne!(a, b);
         assert_eq!(a.len(), 43);
         assert!(

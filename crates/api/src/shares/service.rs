@@ -131,7 +131,7 @@ pub async fn create_link(
     };
 
     // 256-bit random token; only its SHA-256 is stored, so a database leak exposes no links.
-    let token = tokens::generate_token();
+    let token = tokens::generate_token().map_err(AppError::internal)?;
     let expires_at = (Utc::now() + chrono::Duration::from_std(ttl).map_err(AppError::internal)?)
         .trunc_subsecs(6);
     let row = repo::insert_link(

@@ -240,7 +240,7 @@ async fn issue_tokens(
     client: &ClientMeta,
     db: impl sqlx::PgExecutor<'_>,
 ) -> AppResult<TokenResponse> {
-    let refresh_token = tokens::generate_token();
+    let refresh_token = tokens::generate_token().map_err(AppError::internal)?;
     let token_hash = tokens::hash_token(&refresh_token);
     repo::insert(
         db,
