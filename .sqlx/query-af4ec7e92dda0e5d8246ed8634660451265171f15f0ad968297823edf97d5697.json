@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE files SET status = 'failed', updated_at = now()\n           WHERE id IN (\n               SELECT id FROM files\n               WHERE status = 'pending' AND upload_expires_at < now()\n               ORDER BY upload_expires_at\n               LIMIT $1\n               FOR UPDATE SKIP LOCKED\n           )",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "af4ec7e92dda0e5d8246ed8634660451265171f15f0ad968297823edf97d5697"
+}

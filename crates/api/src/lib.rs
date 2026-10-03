@@ -42,7 +42,8 @@ pub async fn build_app_with_pool(config: Config, db: PgPool) -> anyhow::Result<(
 /// Run the server until SIGINT/SIGTERM, then drain in-flight requests.
 pub async fn run(config: Config) -> anyhow::Result<()> {
     let bind_addr = config.http.bind_addr;
-    let (router, _state) = build_app(config).await?;
+    let (router, state) = build_app(config).await?;
+    let cleanup = files::cleanup::spawn(state.clone());
 
     let listener = TcpListener::bind(bind_addr)
         .await
@@ -56,7 +57,10 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
     )
     .with_graceful_shutdown(shutdown_signal())
     .await
-    .context("server error")
+    .context("server error")?;
+
+    cleanup.abort();
+    Ok(())
 }
 
 /// Resolves on Ctrl+C, or on SIGTERM (what ECS sends before stopping a task).

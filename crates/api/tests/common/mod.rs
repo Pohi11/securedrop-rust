@@ -32,6 +32,14 @@ impl TestApp {
     }
 
     pub async fn spawn_with(pool: PgPool, customize: impl FnOnce(&mut Config)) -> Self {
+        // Logs show up for failing tests (captured otherwise). Control with RUST_LOG.
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(
+                tracing_subscriber::EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| "warn,securedrop_api=info".into()),
+            )
+            .with_test_writer()
+            .try_init();
         let mut config = test_config();
         customize(&mut config);
 

@@ -4,7 +4,7 @@ mod health;
 
 use axum::{
     Router,
-    routing::{get, post},
+    routing::{delete, get, post},
 };
 
 use crate::{auth, files, state::AppState, users};
@@ -21,6 +21,11 @@ pub fn router(state: AppState) -> Router {
         .nest("/auth", auth_routes)
         .route("/me", get(users::handlers::me))
         .route("/uploads", post(files::handlers::create_upload))
+        .route("/uploads/{id}", delete(files::handlers::abort_upload))
+        .route(
+            "/uploads/{id}/parts",
+            get(files::handlers::upload_progress).post(files::handlers::presign_parts),
+        )
         .route(
             "/uploads/{id}/complete",
             post(files::handlers::complete_upload),

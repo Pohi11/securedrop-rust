@@ -118,3 +118,89 @@ pub async fn lock_user_quota(
     .fetch_optional(db)
     .await
 }
+
+/// Record (or replace) the checksum a client declared for one part.
+pub async fn upsert_part(
+    db: impl PgExecutor<'_>,
+    file_id: Uuid,
+    part_number: i32,
+    sha256: &[u8],
+    size_bytes: i64,
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"INSERT INTO upload_parts (file_id, part_number, sha256, size_bytes)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (file_id, part_number)
+           DO UPDATE SET sha256 = EXCLUDED.sha256, size_bytes = EXCLUDED.size_bytes"#,
+        file_id,
+        part_number,
+        sha256,
+        size_bytes
+    )
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
+pub struct DeclaredPart {
+    pub part_number: i32,
+    pub sha256: Vec<u8>,
+}
+
+pub async fn declared_parts(
+    db: impl PgExecutor<'_>,
+    file_id: Uuid,
+) -> Result<Vec<DeclaredPart>, sqlx::Error> {
+    sqlx::query_as!(
+        DeclaredPart,
+        "SELECT part_number, sha256 FROM upload_parts WHERE file_id = $1 ORDER BY part_number",
+        file_id
+    )
+    .fetch_all(db)
+    .await
+}
+
+/// Minimal view of a file the cleanup worker needs.
+pub struct CleanupTarget {
+    pub id: Uuid,
+    pub object_key: String,
+    pub s3_upload_id: Option<String>,
+}
+
+/// Expire abandoned uploads: pending rows past their deadline become failed.
+/// `FOR UPDATE SKIP LOCKED` lets several API replicas run the worker concurrently: each row is
+/// claimed by exactly one of them, and nobody waits on another's locks.
+pub async fn expire_pending(db: impl PgExecutor<'_>, limit: i64) -> Result<u64, sqlx::Error> {
+    let result = sqlx::query!(
+        r#"UPDATE files SET status = 'failed', updated_at = now()
+           WHERE id IN (
+               SELECT id FROM files
+               WHERE status = 'pending' AND upload_expires_at < now()
+               ORDER BY upload_expires_at
+               LIMIT $1
+               FOR UPDATE SKIP LOCKED
+           )"#,
+        limit
+    )
+    .execute(db)
+    .await?;
+    Ok(result.rows_affected())
+}
+
+/// Claim failed/deleted files whose storage has not been cleaned up yet.
+pub async fn claim_unpurged(
+    db: impl PgExecutor<'_>,
+    limit: i64,
+) -> Result<Vec<CleanupTarget>, sqlx::Error> {
+    sqlx::query_as!(
+        CleanupTarget,
+        r#"SELECT id, object_key, s3_upload_id FROM files
+           WHERE status IN ('failed', 'deleted') AND purged_at IS NULL
+           ORDER BY updated_at
+           LIMIT $1
+           FOR UPDATE SKIP LOCKED"#,
+        limit
+    )
+    .fetch_all(db)
+    .await
+}

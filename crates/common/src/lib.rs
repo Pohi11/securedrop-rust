@@ -163,3 +163,45 @@ pub struct DownloadResponse {
     pub sha256: String,
     pub request: PresignedRequest,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PartChecksum {
+    pub part_number: u32,
+    /// Hex-encoded SHA-256 of this part's bytes.
+    pub sha256: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PresignPartsRequest {
+    pub parts: Vec<PartChecksum>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PresignedPart {
+    pub part_number: u32,
+    pub size_bytes: u64,
+    pub request: PresignedRequest,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PresignPartsResponse {
+    pub parts: Vec<PresignedPart>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UploadedPartInfo {
+    pub part_number: u32,
+    pub size_bytes: u64,
+}
+
+/// Where a multipart upload stands, so an interrupted client can resume.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UploadProgressResponse {
+    pub file_id: Uuid,
+    pub status: FileStatus,
+    pub part_size: u64,
+    pub part_count: u32,
+    pub uploaded_parts: Vec<UploadedPartInfo>,
+    pub missing_parts: Vec<u32>,
+    pub upload_expires_at: DateTime<Utc>,
+}

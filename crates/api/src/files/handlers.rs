@@ -2,7 +2,8 @@
 
 use axum::{extract::State, http::StatusCode};
 use securedrop_common::{
-    CreateUploadRequest, CreateUploadResponse, DownloadResponse, FileResponse,
+    CreateUploadRequest, CreateUploadResponse, DownloadResponse, FileResponse, PresignPartsRequest,
+    PresignPartsResponse, UploadProgressResponse,
 };
 use uuid::Uuid;
 
@@ -59,4 +60,38 @@ pub async fn download(
     Ok(ApiJson(
         service::download(&state, user.user_id, file_id, &client).await?,
     ))
+}
+
+/// `POST /api/v1/uploads/{id}/parts`: presign URLs for specific parts.
+pub async fn presign_parts(
+    State(state): State<AppState>,
+    user: AuthUser,
+    ApiPath(file_id): ApiPath<Uuid>,
+    ApiJson(req): ApiJson<PresignPartsRequest>,
+) -> AppResult<ApiJson<PresignPartsResponse>> {
+    Ok(ApiJson(
+        service::presign_parts(&state, user.user_id, file_id, req).await?,
+    ))
+}
+
+/// `GET /api/v1/uploads/{id}/parts`: which parts S3 already has (for resuming).
+pub async fn upload_progress(
+    State(state): State<AppState>,
+    user: AuthUser,
+    ApiPath(file_id): ApiPath<Uuid>,
+) -> AppResult<ApiJson<UploadProgressResponse>> {
+    Ok(ApiJson(
+        service::upload_progress(&state, user.user_id, file_id).await?,
+    ))
+}
+
+/// `DELETE /api/v1/uploads/{id}`: abort an in-progress upload.
+pub async fn abort_upload(
+    State(state): State<AppState>,
+    user: AuthUser,
+    client: ClientMeta,
+    ApiPath(file_id): ApiPath<Uuid>,
+) -> AppResult<StatusCode> {
+    service::abort_upload(&state, user.user_id, file_id, &client).await?;
+    Ok(StatusCode::NO_CONTENT)
 }

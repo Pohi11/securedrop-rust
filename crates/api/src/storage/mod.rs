@@ -51,6 +51,33 @@ pub struct GetObjectSpec<'a> {
     pub content_type: &'a str,
 }
 
+/// One part of an in-progress multipart upload, as reported by S3 (ListParts).
+#[derive(Debug, Clone)]
+pub struct UploadedPart {
+    pub part_number: u32,
+    pub size: u64,
+    pub etag: String,
+    pub checksum_sha256: Option<String>,
+}
+
+pub struct UploadPartSpec<'a> {
+    pub key: &'a str,
+    pub upload_id: &'a str,
+    pub part_number: u32,
+    pub size: u64,
+    pub sha256_b64: &'a str,
+}
+
+/// Result of asking S3 to assemble a multipart upload.
+#[derive(Debug, Clone)]
+pub enum CompleteOutcome {
+    /// Assembled; carries the composite checksum if the store reports one.
+    Completed { checksum_sha256: Option<String> },
+    /// The store refused the parts (wrong checksum/ETag, missing or undersized part).
+    /// That is the client's fault, not an infrastructure error.
+    Rejected { code: String },
+}
+
 #[derive(Debug, Clone)]
 pub struct ObjectInfo {
     pub size: u64,
@@ -76,6 +103,32 @@ pub trait ObjectStore: Send + Sync + 'static {
     async fn read_prefix(&self, key: &str, len: u64) -> anyhow::Result<Vec<u8>>;
     /// Delete an object. Deleting a missing object is not an error (S3 semantics).
     async fn delete(&self, key: &str) -> anyhow::Result<()>;
+
+    // --- Multipart uploads -------------------------------------------------------------------
+
+    /// Start a multipart upload (SHA-256 checksums required per part). Returns the upload id.
+    async fn create_multipart(&self, key: &str, content_type: &str) -> anyhow::Result<String>;
+    async fn presign_upload_part(
+        &self,
+        spec: UploadPartSpec<'_>,
+        ttl: Duration,
+    ) -> anyhow::Result<PresignedRequest>;
+    /// Parts S3 has received so far. `None` if the upload no longer exists.
+    async fn list_parts(
+        &self,
+        key: &str,
+        upload_id: &str,
+    ) -> anyhow::Result<Option<Vec<UploadedPart>>>;
+    /// Assemble the parts into the final object.
+    async fn complete_multipart(
+        &self,
+        key: &str,
+        upload_id: &str,
+        parts: &[UploadedPart],
+    ) -> anyhow::Result<CompleteOutcome>;
+    /// Abort and free the stored parts. Aborting an unknown upload is not an error.
+    async fn abort_multipart(&self, key: &str, upload_id: &str) -> anyhow::Result<()>;
+
     /// Cheap connectivity check for readiness probes.
     async fn health_check(&self) -> anyhow::Result<()>;
 }

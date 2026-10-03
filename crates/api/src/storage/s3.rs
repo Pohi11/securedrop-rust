@@ -9,12 +9,18 @@ use aws_sdk_s3::{
     Client,
     config::{RequestChecksumCalculation, ResponseChecksumValidation},
     presigning::PresigningConfig,
-    types::{ChecksumMode, ServerSideEncryption},
+    types::{
+        ChecksumAlgorithm, ChecksumMode, CompletedMultipartUpload, CompletedPart,
+        ServerSideEncryption,
+    },
 };
 use chrono::Utc;
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
 
-use super::{GetObjectSpec, ObjectInfo, ObjectStore, PresignedRequest, PutObjectSpec};
+use super::{
+    CompleteOutcome, GetObjectSpec, ObjectInfo, ObjectStore, PresignedRequest, PutObjectSpec,
+    UploadPartSpec, UploadedPart,
+};
 use crate::config::StorageConfig;
 
 #[derive(Clone)]
@@ -235,6 +241,173 @@ impl ObjectStore for S3Store {
             .await
             .context("DeleteObject failed")?;
         Ok(())
+    }
+
+    async fn create_multipart(&self, key: &str, content_type: &str) -> anyhow::Result<String> {
+        let (sse, kms_key) = self.sse();
+        let out = self
+            .client
+            .create_multipart_upload()
+            .bucket(&self.bucket)
+            .key(key)
+            .content_type(content_type)
+            // Every part must then carry a SHA-256 that S3 verifies on arrival.
+            .checksum_algorithm(ChecksumAlgorithm::Sha256)
+            .set_server_side_encryption(sse)
+            .set_ssekms_key_id(kms_key)
+            .send()
+            .await
+            .context("CreateMultipartUpload failed")?;
+        out.upload_id()
+            .map(str::to_owned)
+            .context("CreateMultipartUpload returned no upload id")
+    }
+
+    async fn presign_upload_part(
+        &self,
+        spec: UploadPartSpec<'_>,
+        ttl: Duration,
+    ) -> anyhow::Result<PresignedRequest> {
+        let req = self
+            .presign_client
+            .upload_part()
+            .bucket(&self.bucket)
+            .key(spec.key)
+            .upload_id(spec.upload_id)
+            .part_number(i32::try_from(spec.part_number).context("part number out of range")?)
+            // Same idea as single PUTs: exact size and SHA-256 of *this part* are signed.
+            .content_length(i64::try_from(spec.size).context("part too large")?)
+            .checksum_sha256(spec.sha256_b64)
+            .presigned(presigning_config(ttl)?)
+            .await
+            .context("presign UploadPart")?;
+        Ok(to_presigned(req, ttl))
+    }
+
+    async fn list_parts(
+        &self,
+        key: &str,
+        upload_id: &str,
+    ) -> anyhow::Result<Option<Vec<UploadedPart>>> {
+        let mut parts = Vec::new();
+        let mut marker: Option<String> = None;
+        loop {
+            let result = self
+                .client
+                .list_parts()
+                .bucket(&self.bucket)
+                .key(key)
+                .upload_id(upload_id)
+                .set_part_number_marker(marker.clone())
+                .send()
+                .await;
+            let out = match result {
+                Ok(out) => out,
+                Err(err)
+                    if err
+                        .as_service_error()
+                        .is_some_and(|e| e.meta().code() == Some("NoSuchUpload")) =>
+                {
+                    return Ok(None);
+                }
+                Err(err) => return Err(err).context("ListParts failed"),
+            };
+            for p in out.parts() {
+                parts.push(UploadedPart {
+                    part_number: p
+                        .part_number()
+                        .and_then(|n| u32::try_from(n).ok())
+                        .unwrap_or(0),
+                    size: p.size().and_then(|n| u64::try_from(n).ok()).unwrap_or(0),
+                    etag: p.e_tag().unwrap_or_default().to_string(),
+                    checksum_sha256: p.checksum_sha256().map(str::to_owned),
+                });
+            }
+            // ListParts returns at most 1,000 parts per page.
+            if out.is_truncated() == Some(true) {
+                marker = out.next_part_number_marker().map(str::to_owned);
+                if marker.is_none() {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        parts.sort_by_key(|p| p.part_number);
+        Ok(Some(parts))
+    }
+
+    async fn complete_multipart(
+        &self,
+        key: &str,
+        upload_id: &str,
+        parts: &[UploadedPart],
+    ) -> anyhow::Result<CompleteOutcome> {
+        let completed: Vec<CompletedPart> = parts
+            .iter()
+            .map(|p| {
+                CompletedPart::builder()
+                    .part_number(i32::try_from(p.part_number).unwrap_or(i32::MAX))
+                    .e_tag(&p.etag)
+                    .set_checksum_sha256(p.checksum_sha256.clone())
+                    .build()
+            })
+            .collect();
+        let result = self
+            .client
+            .complete_multipart_upload()
+            .bucket(&self.bucket)
+            .key(key)
+            .upload_id(upload_id)
+            .multipart_upload(
+                CompletedMultipartUpload::builder()
+                    .set_parts(Some(completed))
+                    .build(),
+            )
+            .send()
+            .await;
+        match result {
+            Ok(out) => Ok(CompleteOutcome::Completed {
+                checksum_sha256: out.checksum_sha256().map(str::to_owned),
+            }),
+            Err(err) => {
+                let code = err
+                    .as_service_error()
+                    .and_then(|e| e.meta().code())
+                    .map(str::to_owned);
+                match code.as_deref() {
+                    Some(
+                        "InvalidPart" | "InvalidPartOrder" | "EntityTooSmall" | "BadDigest"
+                        | "InvalidRequest",
+                    ) => Ok(CompleteOutcome::Rejected {
+                        code: code.unwrap_or_default(),
+                    }),
+                    _ => Err(err).context("CompleteMultipartUpload failed"),
+                }
+            }
+        }
+    }
+
+    async fn abort_multipart(&self, key: &str, upload_id: &str) -> anyhow::Result<()> {
+        match self
+            .client
+            .abort_multipart_upload()
+            .bucket(&self.bucket)
+            .key(key)
+            .upload_id(upload_id)
+            .send()
+            .await
+        {
+            Ok(_) => Ok(()),
+            Err(err)
+                if err
+                    .as_service_error()
+                    .is_some_and(|e| e.is_no_such_upload()) =>
+            {
+                Ok(())
+            }
+            Err(err) => Err(err).context("AbortMultipartUpload failed"),
+        }
     }
 
     async fn health_check(&self) -> anyhow::Result<()> {

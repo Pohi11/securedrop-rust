@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO upload_parts (file_id, part_number, sha256, size_bytes)\n           VALUES ($1, $2, $3, $4)\n           ON CONFLICT (file_id, part_number)\n           DO UPDATE SET sha256 = EXCLUDED.sha256, size_bytes = EXCLUDED.size_bytes",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int4",
+        "Bytea",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "44bc69ee422625b32d0fa00ecb9f13b304175ba4913d8cacab2acc1732541429"
+}
