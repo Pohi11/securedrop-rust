@@ -3,8 +3,6 @@
 
 mod common;
 
-use std::time::Duration;
-
 use common::{TestApp, error_code, execute_presigned, sha256_hex};
 use securedrop_api::files::cleanup;
 use securedrop_common::{
@@ -284,7 +282,6 @@ async fn cleanup_worker_expires_abandoned_uploads(pool: PgPool) {
     let app = TestApp::spawn_with(pool.clone(), |c| {
         c.uploads.single_part_max = PART as u64;
         c.uploads.part_size = PART as u64;
-        c.uploads.pending_upload_ttl = Duration::from_secs(1);
     })
     .await;
     let token = app.signup("erin@example.com").await.access_token;
@@ -298,7 +295,13 @@ async fn cleanup_worker_expires_abandoned_uploads(pool: PgPool) {
     let stats = cleanup::run_once(&app.state).await.unwrap();
     assert_eq!(stats.expired, 0);
 
-    tokio::time::sleep(Duration::from_millis(1500)).await;
+    // Move the deadline into the past instead of sleeping past a short TTL, which made the
+    // first assertion racy on slow CI runners (uploading the part could outlast the TTL).
+    sqlx::query("UPDATE files SET upload_expires_at = now() - interval '1 second' WHERE id = $1")
+        .bind(file_id)
+        .execute(&pool)
+        .await
+        .unwrap();
     let stats = cleanup::run_once(&app.state).await.unwrap();
     assert_eq!(stats.expired, 1);
     assert_eq!(stats.purged, 1);
