@@ -1,0 +1,2 @@
+# Test fixture: dummy 32-byte JWT secret in a config unit test, not a real credential.
+ef0683ed19f269754fc15b6b7b2bdc2e959dfed0:crates/api/src/config.rs:generic-api-key:347

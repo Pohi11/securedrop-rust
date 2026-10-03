@@ -1,4 +1,4 @@
-//! Phase 06: rate limiting and HTTP hardening.
+//! Rate limiting and HTTP hardening.
 #![allow(clippy::unwrap_used)]
 
 mod common;

@@ -1,4 +1,4 @@
-//! Phase 07: request ids, readiness and metrics.
+//! Request ids, readiness and metrics.
 #![allow(clippy::unwrap_used)]
 
 mod common;

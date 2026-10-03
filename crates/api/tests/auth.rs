@@ -1,4 +1,4 @@
-//! Phase 02: authentication end to end over HTTP.
+//! Authentication end to end over HTTP.
 #![allow(clippy::unwrap_used)]
 
 mod common;

@@ -1,4 +1,4 @@
-//! Phase 04: multipart, resumable uploads and the cleanup worker.
+//! Multipart, resumable uploads and the cleanup worker.
 #![allow(clippy::unwrap_used)]
 
 mod common;

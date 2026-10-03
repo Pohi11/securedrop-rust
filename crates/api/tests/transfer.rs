@@ -1,4 +1,4 @@
-//! Phase 03: presigned single-part upload & download against a real S3-compatible store.
+//! Presigned single-part upload & download against a real S3-compatible store.
 #![allow(clippy::unwrap_used)]
 
 mod common;

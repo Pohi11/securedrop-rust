@@ -1,4 +1,4 @@
-//! Phase 05: authorization, grants, share links, listing and deletion.
+//! Authorization, grants, share links, listing and deletion.
 #![allow(clippy::unwrap_used)]
 
 mod common;

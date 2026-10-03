@@ -1,4 +1,4 @@
-//! Phase 08: the CLI library end to end against a real API + Postgres + Redis + S3 store.
+//! The CLI library end to end against a real API + Postgres + Redis + S3 store.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use std::net::SocketAddr;

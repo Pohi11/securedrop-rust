@@ -1,4 +1,4 @@
-//! Phase 01: the schema enforces its own invariants, independent of application code.
+//! The schema enforces its own invariants, independent of application code.
 #![allow(clippy::unwrap_used)]
 
 mod common;
